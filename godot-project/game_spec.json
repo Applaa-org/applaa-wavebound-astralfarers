@@ -1,0 +1,50 @@
+{
+  "game": {
+    "name": "Wavebound Astralfarers",
+    "type": "2D",
+    "genre": "co-op exploration",
+    "description": "Co-op exploration game where players sail star-boats across cosmic waves, gathering astral seeds while avoiding creatures and weather hazards."
+  },
+  "settings": {
+    "window": {"width": 1024, "height": 768},
+    "physics": {"gravity": 200}
+  },
+  "player": {
+    "name": "Star-Boat",
+    "health": 100,
+    "speed": 150,
+    "abilities": ["sail", "collect", "boost"]
+  },
+  "entities": {
+    "enemies": [
+      {
+        "name": "StarlightFeeder",
+        "health": 50,
+        "speed": 80,
+        "damage": 20,
+        "behavior": "patrol"
+      }
+    ],
+    "collectibles": [
+      {
+        "name": "AstralSeed",
+        "value": 10
+      }
+    ]
+  },
+  "levels": [
+    {
+      "name": "Cosmic Sea",
+      "background": "space",
+      "obstacles": ["void_turbulence", "solar_flares"]
+    }
+  ],
+  "logic": {
+    "winCondition": "collect_20_seeds",
+    "loseCondition": "health_zero",
+    "scoring": {
+      "pointsPerSeed": 10,
+      "pointsPerCreatureAvoided": 5
+    }
+  }
+}

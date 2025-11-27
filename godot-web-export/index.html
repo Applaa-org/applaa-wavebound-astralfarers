@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wavebound Astralfarers - HTML5 Preview</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0a0514 0%, #1a0a2e 50%, #16213e 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 1024px;
+            height: 768px;
+            border: 3px solid #4d3d8a;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(138, 43, 226, 0.5);
+        }
+        
+        #gameCanvas {
+            background: linear-gradient(180deg, #0a0514 0%, #1a0a2e 100%);
+            display: block;
+            border-radius: 7px;
+        }
+        
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .ui-element {
+            position: absolute;
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            pointer-events: auto;
+        }
+        
+        #score {
+            top: 20px;
+            left: 20px;
+        }
+        
+        #weather {
+            top: 20px;
+            right: 20px;
+        }
+        
+        #startScreen, #victoryScreen, #defeatScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 5, 20, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            border-radius: 7px;
+        }
+        
+        .screen-title {
+            font-size: 48px;
+            color: #9d4edd;
+            margin-bottom: 20px;
+            text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.8);
+        }
+        
+        .instructions {
+            color: #c77dff;
+            text-align: center;
+            margin-bottom: 30px;
+            line-height: 1.6;
+            max-width: 600px;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #7209b7 0%, #560bad 100%);
+            color: white;
+            border: 2px solid #c77dff;
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        
+        .button:hover {
+            background: linear-gradient(135deg, #c77dff 0%, #7209b7 100%);
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(199, 125, 255, 0.6);
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1024" height="768"></canvas>
+        <div id="ui">
+            <div id="score" class="ui-element">Seeds: 0/20</div>
+            <div id="weather" class="ui-element">Weather: Calm</div>
+        </div>
+        
+        <div id="startScreen">
+            <h1 class="screen-title">Wavebound Astralfarers</h1>
+            <div class="instructions">
+                Co-op Exploration Game<br><br>
+                Player 1: WASD to move, SPACE to boost<br>
+                Player 2: Arrow keys to move, RSHIFT to boost<br><br>
+                Collect 20 astral seeds to win!<br>
+                Avoid starlight-feeding creatures!<br>
+                Survive cosmic weather events!
+            </div>
+            <button class="button" onclick="startGame()">Start Game</button>
+            <button class="button" onclick="closeGame()">Close</button>
+        </div>
+        
+        <div id="victoryScreen" class="hidden">
+            <h1 class="screen-title">Victory!</h1>
+            <div class="instructions">
+                Seeds Collected: <span id="finalScore">20/20</span><br>
+                Mission Complete!
+            </div>
+            <button class="button" onclick="restartGame()">Restart Level</button>
+            <button class="button" onclick="mainMenu()">Main Menu</button>
+            <button class="button" onclick="closeGame()">Close</button>
+        </div>
+        
+        <div id="defeatScreen" class="hidden">
+            <h1 class="screen-title">Defeat</h1>
+            <div class="instructions">
+                Seeds Collected: <span id="defeatScore">0/20</span><br>
+                Your star-boat was destroyed!
+            </div>
+            <button class="button" onclick="restartGame()">Restart Level</button>
+            <button class="button" onclick="mainMenu()">Main Menu</button>
+            <button class="button" onclick="closeGame()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        let gameState = 'start';
+        let seeds = 0;
+        let weather = 'calm';
+        let weatherTimer = 0;
+        let nextWeatherChange = 600; // 10 seconds at 60fps
+        
+        // Player objects
+        const player1 = {
+            x: 200,
+            y: 384,
+            vx: 0,
+            vy: 0,
+            color: '#4d99ff',
+            health: 100,
+            boostCooldown: 0
+        };
+        
+        const player2 = {
+            x: 824,
+            y: 384,
+            vx: 0,
+            vy: 0,
+            color: '#cc4dff',
+            health: 100,
+            boostCooldown: 0
+        };
+        
+        // Game objects
+        const islands = [];
+        const creatures = [];
+        const astralSeeds = [];
+        const particles = [];
+        const stars = [];
+        
+        // Input handling
+        const keys = {};
+        
+        document.addEventListener('keydown', (e) => {
+            keys[e.key.toLowerCase()] = true;
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            keys[e.key.toLowerCase()] = false;
+        });
+        
+        // Initialize game objects
+        function initGame() {
+            // Create stars for background
+            for (let i = 0; i < 100; i++) {
+                stars.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    size: Math.random() * 2,
+                    brightness: Math.random()
+                });
+            }
+            
+            // Create islands
+            for (let i = 0; i < 5; i++) {
+                islands.push({
+                    x: Math.random() * (canvas.width - 100) + 50,
+                    y: Math.random() * (canvas.height - 100) + 50,
+                    radius: 60,
+                    floatOffset: Math.random() * Math.PI * 2,
+                    floatSpeed: Math.random() * 0.02 + 0.01,
+                    hasSeed: true
+                });
+            }
+            
+            // Create creatures
+            for (let i = 0; i < 3; i++) {
+                creatures.push({
+                    x: Math.random() * (canvas.width - 100) + 50,
+                    y: Math.random() * (canvas.height - 100) + 50,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    radius: 15,
+                    color: '#ff6633',
+                    damageCooldown: 0
+                });
+            }
+        }
+        
+        // Update game logic
+        function update() {
+            if (gameState !== 'playing') return;
+            
+            // Update weather
+            weatherTimer++;
+            if (weatherTimer >= nextWeatherChange) {
+                changeWeather();
+                weatherTimer = 0;
+                nextWeatherChange = Math.random() * 420 + 300; // 5-12 seconds
+            }
+            
+            // Update players
+            updatePlayer(player1, 'w', 'a', 's', 'd', ' ');
+            updatePlayer(player2, 'arrowup', 'arrowleft', 'arrowdown', 'arrowright', 'shift');
+            
+            // Update creatures
+            creatures.forEach(creature => {
+                creature.x += creature.vx;
+                creature.y += creature.vy;
+                
+                // Bounce off walls
+                if (creature.x <= creature.radius || creature.x >= canvas.width - creature.radius) {
+                    creature.vx = -creature.vx;
+                }
+                if (creature.y <= creature.radius || creature.y >= canvas.height - creature.radius) {
+                    creature.vy = -creature.vy;
+                }
+                
+                // Random direction change
+                if (Math.random() < 0.01) {
+                    creature.vx = (Math.random() - 0.5) * 2;
+                    creature.vy = (Math.random() - 0.5) * 2;
+                }
+                
+                // Check collision with players
+                if (creature.damageCooldown <= 0) {
+                    [player1, player2].forEach(player => {
+                        const dist = Math.hypot(player.x - creature.x, player.y - creature.y);
+                        if (dist < creature.radius + 20) {
+                            player.health -= 20;
+                            creature.damageCooldown = 120; // 2 seconds
+                            
+                            // Knockback
+                            const angle = Math.atan2(player.y - creature.y, player.x - creature.x);
+                            player.vx = Math.cos(angle) * 5;
+                            player.vy = Math.sin(angle) * 5;
+                            
+                            if (player.health <= 0) {
+                                defeat();
+                            }
+                        }
+                    });
+                }
+                
+                if (creature.damageCooldown > 0) creature.damageCooldown--;
+            });
+            
+            // Update islands
+            islands.forEach(island => {
+                island.y += Math.sin(Date.now() * island.floatSpeed + island.floatOffset) * 0.5;
+            });
+            
+            // Update astral seeds
+            astralSeeds.forEach((seed, index) => {
+                seed.rotation += 0.05;
+                seed.y += Math.sin(Date.now() * 0.002) * 0.3;
+                
+                // Check collection
+                [player1, player2].forEach(player => {
+                    const dist = Math.hypot(player.x - seed.x, player.y - seed.y);
+                    if (dist < 25) {
+                        collectSeed(index);
+                    }
+                });
+            });
+            
+            // Update particles
+            particles.forEach((particle, index) => {
+                particle.x += particle.vx;
+                particle.y += particle.vy;
+                particle.life--;
+                
+                if (particle.life <= 0) {
+                    particles.splice(index, 1);
+                }
+            });
+        }
+        
+        function updatePlayer(player, upKey, leftKey, downKey, rightKey, boostKey) {
+            // Handle input
+            let dx = 0, dy = 0;
+            if (keys[upKey]) dy -= 1;
+            if (keys[downKey]) dy += 1;
+            if (keys[leftKey]) dx -= 1;
+            if (keys[rightKey]) dx += 1;
+            
+            // Apply weather effects
+            let speed = 2.5;
+            if (weather === 'cosmic_winds') {
+                dx += 0.3; // Wind pushes right
+            } else if (weather === 'void_turbulence') {
+                dx += (Math.random() - 0.5) * 0.5;
+                dy += (Math.random() - 0.5) * 0.5;
+            }
+            
+            // Handle boost
+            if (keys[boostKey] && player.boostCooldown <= 0) {
+                speed = 4;
+                player.boostCooldown = 120;
+                
+                // Create boost particles
+                for (let i = 0; i < 5; i++) {
+                    particles.push({
+                        x: player.x,
+                        y: player.y,
+                        vx: (Math.random() - 0.5) * 2,
+                        vy: Math.random() * 2 + 1,
+                        life: 30,
+                        color: player.color
+                    });
+                }
+            }
+            
+            if (player.boostCooldown > 0) player.boostCooldown--;
+            
+            // Apply movement
+            if (dx !== 0 || dy !== 0) {
+                const len = Math.hypot(dx, dy);
+                player.vx = (dx / len) * speed;
+                player.vy = (dy / len) * speed;
+            } else {
+                player.vx *= 0.9;
+                player.vy *= 0.9;
+            }
+            
+            player.x += player.vx;
+            player.y += player.vy;
+            
+            // Keep in bounds
+            player.x = Math.max(20, Math.min(canvas.width - 20, player.x));
+            player.y = Math.max(20, Math.min(canvas.height - 20, player.y));
+        }
+        
+        function changeWeather() {
+            const weatherTypes = ['calm', 'solar_flares', 'void_turbulence', 'cosmic_winds'];
+            weather = weatherTypes[Math.floor(Math.random() * weatherTypes.length)];
+            document.getElementById('weather').textContent = 'Weather: ' + weather.replace('_', ' ').charAt(0).toUpperCase() + weather.replace('_', ' ').slice(1);
+        }
+        
+        function collectSeed(index) {
+            seeds++;
+            document.getElementById('score').textContent = `Seeds: ${seeds}/20`;
+            
+            // Create collection effect
+            const seed = astralSeeds[index];
+            for (let i = 0; i < 10; i++) {
+                particles.push({
+                    x: seed.x,
+                    y: seed.y,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: (Math.random() - 0.5) * 5,
+                    life: 40,
+                    color: '#cc99ff'
+                });
+            }
+            
+            astralSeeds.splice(index, 1);
+            
+            if (seeds >= 20) {
+                victory();
+            }
+        }
+        
+        // Render game
+        function render() {
+            // Clear canvas
+            ctx.fillStyle = 'rgba(10, 5, 20, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw stars
+            stars.forEach(star => {
+                ctx.fillStyle = `rgba(255, 255, 255, ${star.brightness})`;
+                ctx.fillRect(star.x, star.y, star.size, star.size);
+            });
+            
+            // Draw wave effect
+            const time = Date.now() * 0.001;
+            ctx.strokeStyle = 'rgba(138, 43, 226, 0.2)';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 5; i++) {
+                ctx.beginPath();
+                for (let x = 0; x < canvas.width; x += 10) {
+                    const y = canvas.height / 2 + Math.sin(x * 0.01 + time + i) * 50;
+                    if (x === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.stroke();
+            }
+            
+            // Draw islands
+            islands.forEach(island => {
+                ctx.fillStyle = '#2d1b69';
+                ctx.beginPath();
+                ctx.arc(island.x, island.y, island.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = '#4d3d8a';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+            });
+            
+            // Draw creatures
+            creatures.forEach(creature => {
+                ctx.fillStyle = creature.damageCooldown > 0 ? '#ff9999' : creature.color;
+                ctx.beginPath();
+                ctx.arc(creature.x, creature.y, creature.radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Draw creature details
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(creature.x - 5, creature.y - 5, 3, 0, Math.PI * 2);
+                ctx.arc(creature.x + 5, creature.y - 5, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw astral seeds
+            astralSeeds.forEach(seed => {
+                ctx.save();
+                ctx.translate(seed.x, seed.y);
+                ctx.rotate(seed.rotation);
+                
+                ctx.fillStyle = '#cc99ff';
+                ctx.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    const x = Math.cos(angle) * 15;
+                    const y = Math.sin(angle) * 15;
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.restore();
+            });
+            
+            // Draw particles
+            particles.forEach(particle => {
+                ctx.fillStyle = particle.color;
+                ctx.globalAlpha = particle.life / 40;
+                ctx.fillRect(particle.x - 2, particle.y - 2, 4, 4);
+            });
+            ctx.globalAlpha = 1;
+            
+            // Draw players
+            [player1, player2].forEach(player => {
+                ctx.save();
+                ctx.translate(player.x, player.y);
+                
+                // Calculate rotation based on velocity
+                if (player.vx !== 0 || player.vy !== 0) {
+                    ctx.rotate(Math.atan2(player.vy, player.vx) + Math.PI / 2);
+                }
+                
+                // Draw boat shape
+                ctx.fillStyle = player.color;
+                ctx.beginPath();
+                ctx.moveTo(0, -15);
+                ctx.lineTo(-10, 15);
+                ctx.lineTo(10, 15);
+                ctx.closePath();
+                ctx.fill();
+                
+                ctx.restore();
+            });
+            
+            // Apply weather overlay
+            if (weather === 'solar_flares') {
+                ctx.fillStyle = 'rgba(255, 200, 100, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (weather === 'void_turbulence') {
+                ctx.fillStyle = 'rgba(100, 50, 200, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            } else if (weather === 'cosmic_winds') {
+                ctx.fillStyle = 'rgba(100, 200, 255, 0.1)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+        
+        // Game loop
+        function gameLoop() {
+            update();
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Game control functions
+        function startGame() {
+            gameState = 'playing';
+            seeds = 0;
+            weather = 'calm';
+            weatherTimer = 0;
+            
+            player1.health = 100;
+            player2.health = 100;
+            player1.x = 200;
+            player1.y = 384;
+            player2.x = 824;
+            player2.y = 384;
+            
+            islands.length = 0;
+            creatures.length = 0;
+            astralSeeds.length = 0;
+            particles.length = 0;
+            
+            initGame();
+            
+            document.getElementById('startScreen').classList.add('hidden');
+            document.getElementById('victoryScreen').classList.add('hidden');
+            document.getElementById('defeatScreen').classList.add('hidden');
+            document.getElementById('score').textContent = 'Seeds: 0/20';
+            document.getElementById('weather').textContent = 'Weather: Calm';
+        }
+        
+        function victory() {
+            gameState = 'victory';
+            document.getElementById('finalScore').textContent = `${seeds}/20`;
+            document.getElementById('victoryScreen').classList.remove('hidden');
+        }
+        
+        function defeat() {
+            gameState = 'defeat';
+            document.getElementById('defeatScore').textContent = `${seeds}/20`;
+            document.getElementById('defeatScreen').classList.remove('hidden');
+        }
+        
+        function restartGame() {
+            startGame();
+        }
+        
+        function mainMenu() {
+            gameState = 'start';
+            document.getElementById('startScreen').classList.remove('hidden');
+            document.getElementById('victoryScreen').classList.add('hidden');
+            document.getElementById('defeatScreen').classList.add('hidden');
+        }
+        
+        function closeGame() {
+            // In a real implementation, this would close the game
+            alert('Game closed! In the full Godot version, this would quit the application.');
+        }
+        
+        // Spawn seeds periodically
+        setInterval(() => {
+            if (gameState === 'playing' && islands.length > 0) {
+                const availableIslands = islands.filter(island => island.hasSeed);
+                if (availableIslands.length > 0 && astralSeeds.length < 5) {
+                    const island = availableIslands[Math.floor(Math.random() * availableIslands.length)];
+                    astralSeeds.push({
+                        x: island.x,
+                        y: island.y - 40,
+                        rotation: 0
+                    });
+                    island.hasSeed = false;
+                    
+                    // Respawn seed after delay
+                    setTimeout(() => {
+                        island.hasSeed = true;
+                    }, 10000);
+                }
+            }
+        }, 3000);
+        
+        // Initialize and start
+        initGame();
+        gameLoop();
+    </script>
+</body>
+</html>
